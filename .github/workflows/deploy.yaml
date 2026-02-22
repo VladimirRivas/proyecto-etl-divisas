@@ -14,7 +14,7 @@ jobs:
     - name: Install jq
       run: sudo apt-get update && sudo apt-get install -y jq
 
-    # 1. Obtener el ID del cluster "Cluster-ETL-Fabian" [image_3d86e6.png]
+    # 1. Obtener el ID del cluster "Cluster-ETL-Fabian"
     - name: Get Cluster ID
       run: |
         HOST=${{ secrets.DATABRICKS_HOST }}
@@ -30,13 +30,14 @@ jobs:
         fi
         echo "CLUSTER_ID=$CLUSTER_ID" >> $GITHUB_ENV
 
-    # 2. Crear el Job Medallion con TUS rutas reales [image_3d8365.png, image_3d837c.png, image_3d837f.png]
+    # 2. Crear el Job Medallion con tus rutas reales y corregidas
     - name: Create/Update Job
       run: |
         HOST=${{ secrets.DATABRICKS_HOST }}
         TOKEN=${{ secrets.DATABRICKS_TOKEN }}
-        # Nota: La ruta de los Repos en Databricks es sensible. Asegúrate de que coincida con tu usuario.
-        REPO_PATH="/Workspace/Repos/${{ github.repository_owner }}/${{ github.event.repository.name }}"
+        
+        # --- ¡AQUÍ ESTÁ LA CORRECCIÓN CLAVE! ---
+        REPO_PATH="/Workspace/Users/vladimir.rivas.yv@outlook.com/proyecto-etl-divisas"
 
         cat > job_config.json << EOF
         {
