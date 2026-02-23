@@ -1,0 +1,14 @@
+{
+    "api_name": "Yahoo Finance (yfinance)",
+    "symbols": ["COP=X", "EURUSD=X", "BTC-USD", "MXN=X", "GBPUSD=X"],
+    "parameters": {
+        "period": "1d",
+        "interval": "1m",
+        "proxy": null
+    },
+    "storage": {
+        "catalog": "proyecto_divisas",
+        "schema": "bronze",
+        "table": "ingesta_api_raw"
+    }
+}
