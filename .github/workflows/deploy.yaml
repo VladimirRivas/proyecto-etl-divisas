@@ -1,0 +1,106 @@
+name: "Databricks CI/CD + Orquestación Medallion"
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v3
+
+    - name: Install jq
+      run: sudo apt-get update && sudo apt-get install -y jq
+
+    # 1. Obtener el ID del cluster "Cluster-ETL-Fabian"
+    - name: Get Cluster ID
+      run: |
+        HOST=${{ secrets.DATABRICKS_HOST }}
+        TOKEN=${{ secrets.DATABRICKS_TOKEN }}
+        CLUSTER_NAME="Cluster-ETL-Fabian"
+
+        clusters=$(curl -s -X GET -H "Authorization: Bearer $TOKEN" "$HOST/api/2.0/clusters/list")
+        CLUSTER_ID=$(echo "$clusters" | jq -r --arg name "$CLUSTER_NAME" '.clusters[] | select(.cluster_name==$name) | .cluster_id')
+        
+        if [ -z "$CLUSTER_ID" ] || [ "$CLUSTER_ID" == "null" ]; then
+          echo "Error: No se encontró el cluster $CLUSTER_NAME"
+          exit 1
+        fi
+        echo "CLUSTER_ID=$CLUSTER_ID" >> $GITHUB_ENV
+
+    # 2. Crear el Job Medallion con tus rutas reales y corregidas
+    - name: Create/Update Job
+      run: |
+        HOST=${{ secrets.DATABRICKS_HOST }}
+        TOKEN=${{ secrets.DATABRICKS_TOKEN }}
+        
+        # --- ¡AQUÍ ESTÁ LA CORRECCIÓN CLAVE! ---
+        REPO_PATH="/Workspace/Users/vladimir.rivas.yv@outlook.com/proyecto-etl-divisas"
+
+        cat > job_config.json << EOF
+        {
+          "name": "ETL_Divisas_Final_Fabian",
+          "format": "MULTI_TASK",
+          "tasks": [
+            {
+              "task_key": "0_PrepAmb",
+              "notebook_task": { "notebook_path": "$REPO_PATH/PrepAmb/0_preparacion_ambiente" },
+              "existing_cluster_id": "${{ env.CLUSTER_ID }}"
+            },
+            {
+              "task_key": "1_Extract_CSV",
+              "depends_on": [{"task_key": "0_PrepAmb"}],
+              "notebook_task": { "notebook_path": "$REPO_PATH/proceso/01_ingest_historical_csv" },
+              "existing_cluster_id": "${{ env.CLUSTER_ID }}"
+            },
+            {
+              "task_key": "2_Extract_API",
+              "depends_on": [{"task_key": "0_PrepAmb"}],
+              "notebook_task": { "notebook_path": "$REPO_PATH/proceso/02_ingest_api_incremental" },
+              "existing_cluster_id": "${{ env.CLUSTER_ID }}"
+            },
+            {
+              "task_key": "3_Silver",
+              "depends_on": [{"task_key": "1_Extract_CSV"}, {"task_key": "2_Extract_API"}],
+              "notebook_task": { "notebook_path": "$REPO_PATH/proceso/03_silver_refinement" },
+              "existing_cluster_id": "${{ env.CLUSTER_ID }}"
+            },
+            {
+              "task_key": "4_Gold",
+              "depends_on": [{"task_key": "3_Silver"}],
+              "notebook_task": { "notebook_path": "$REPO_PATH/proceso/04_gold_analytics" },
+              "existing_cluster_id": "${{ env.CLUSTER_ID }}"
+            },
+            {
+              "task_key": "5_Grants",
+              "depends_on": [{"task_key": "4_Gold"}],
+              "notebook_task": { "notebook_path": "$REPO_PATH/seguridad/05_seguridad_grants_divisas" },
+              "existing_cluster_id": "${{ env.CLUSTER_ID }}"
+            }
+          ]
+        }
+        EOF
+
+        # Eliminar job previo si existe para evitar duplicados
+        JOB_ID=$(curl -s -X GET -H "Authorization: Bearer $TOKEN" "$HOST/api/2.1/jobs/list" \
+          | jq -r '.jobs[]? | select(.settings.name=="ETL_Divisas_Final_Fabian") | .job_id')
+        
+        if [ -n "$JOB_ID" ] && [ "$JOB_ID" != "null" ]; then
+          curl -s -X POST -H "Authorization: Bearer $TOKEN" -d "{\"job_id\":$JOB_ID}" "$HOST/api/2.1/jobs/delete"
+        fi
+
+        # Crear el nuevo Job orquestado
+        curl -s -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" -d @job_config.json "$HOST/api/2.1/jobs/create"
+
+    # 3. Ejecutar inmediatamente
+    - name: Run Now
+      run: |
+        HOST=${{ secrets.DATABRICKS_HOST }}
+        TOKEN=${{ secrets.DATABRICKS_TOKEN }}
+        
+        JOB_ID=$(curl -s -X GET -H "Authorization: Bearer $TOKEN" "$HOST/api/2.1/jobs/list" \
+          | jq -r '.jobs[] | select(.settings.name=="ETL_Divisas_Final_Fabian") | .job_id')
+        
+        curl -s -X POST -H "Authorization: Bearer $TOKEN" -d "{\"job_id\":$JOB_ID}" "$HOST/api/2.1/jobs/run-now"
