@@ -1,0 +1,2 @@
+LINK DEL TABLERO
+https://adb-7405618691456149.9.azuredatabricks.net/dashboardsv3/01f1105dc0021ac9966316f6be2543be/published?o=7405618691456149&f_a2f06671%7Eb1b70939=BTC-USD
